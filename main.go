@@ -265,6 +265,10 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repo string) (*li
 			}
 		}
 		folders.Remove(felem)
+
+		if files.Len() >= 10 {
+			break
+		}
 	}
 	return files, nil
 }
@@ -339,17 +343,43 @@ func main() {
 	dutRtLargeRemoteRepo, err = dutRtMgr.GetRepository((*largeRemoteRepos)[0])
 	jflog.Info(fmt.Sprintf("After recreation DUT RT repo list : %+v", dutRtLargeRemoteRepo))
 
-	/*
-		rr := []string{(*largeRemoteRepos)[0]}
-		for _, r := range rr {
-			fmt.Printf("Fetching files in repo : %s\n", r)
-			files, err := GetRemoteArtifactFiles(&rtDetails, r)
-			if err != nil {
-				jflog.Error(fmt.Sprintf("Failed to get artifact files for repo %s", r))
-			}
-			jflog.Info(fmt.Sprintf("repo %s has #files : %d", r, files.Len()))
+	rr := []string{(*largeRemoteRepos)[0]}
+	for _, r := range rr {
+		fmt.Printf("Fetching files in repo : %s\n", r)
+		files, err := GetRemoteArtifactFiles(&refRtDetails, r)
+		if err != nil {
+			jflog.Error(fmt.Sprintf("Failed to get artifact files for repo %s", r))
 		}
-	*/
+		jflog.Info(fmt.Sprintf("repo %s has #files : %d", r, files.Len()))
+
+		for files.Len() > 0 {
+			felem := files.Front()
+			f := felem.Value.(string)
+			fmt.Printf("file : %s, Starting download\n", f)
+			params := services.NewDownloadParams()
+			params.Pattern = f
+			params.Target = "mydownloads"
+			params.Recursive = true
+			params.IncludeDirs = false
+			params.Flat = false
+			params.Explode = false
+			params.Symlink = true
+			params.ValidateSymlink = false
+			// Retries default value: 3
+			params.Retries = 5
+			// SplitCount default value: 3
+			params.SplitCount = 2
+			// MinSplitSize default value: 5120
+			params.MinSplitSize = 7168
+
+			td, te, err := dutRtMgr.DownloadFiles(params)
+			if err != nil {
+				jflog.Error(fmt.Sprintf("file : %s, download failed", f))
+			}
+			jflog.Info(fmt.Sprintf("file : %s, td = %d, te = %d", f, td, te))
+			files.Remove(felem)
+		}
+	}
 
 	jflog.Info("Ending data simulator")
 }
