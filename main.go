@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -14,13 +13,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v2"
+
 	"time"
 
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	"github.com/jfrog/jfrog-client-go/artifactory/services"
-	jfauth "github.com/jfrog/jfrog-client-go/auth"
+
+	//"github.com/jfrog/jfrog-client-go/artifactory/services"
 	//serviceutils "github.com/jfrog/jfrog-client-go/artifactory/services/utils"
+	jfauth "github.com/jfrog/jfrog-client-go/auth"
 	"github.com/jfrog/jfrog-client-go/config"
 	jflog "github.com/jfrog/jfrog-client-go/utils/log"
 )
@@ -40,8 +44,10 @@ func ValidateConfigPath(path string) error {
 
 // RtConfig struct for insight data simulator
 type RtConfig struct {
-	ConfigPath    string
-	RtCredentials RtUrlCreds
+	CredentialsPath string
+	SimConfigPath   string
+	RtCredentials   RtUrlCreds
+	SimulationCfg   SimConfig
 }
 type RtUrlCreds struct {
 	RefArtiServer struct {
@@ -55,39 +61,53 @@ type RtUrlCreds struct {
 		ArtiApikey   string `yaml:"artiapikey"`
 	} `yaml:"dutartiserver"`
 }
+type RepoInputDetails struct {
+	Name string `yaml:"name"`
+}
+type SimConfig struct {
+	RemoteRepos []RepoInputDetails `json:"remoterepos"`
+}
 
 // NewRtConfig returns a new decoded RtConfig struct
 func NewRtConfig() (*RtConfig, error) {
 	// Create RT config structure
 	config := &RtConfig{}
 
-	flag.StringVar(&config.ConfigPath, "config", "./config.yaml", "path to config file")
+	flag.StringVar(&config.CredentialsPath, "credentials", "./credentials.yaml", "path to credentials file")
+	flag.StringVar(&config.SimConfigPath, "simconfig", "./simconfig.yaml", "path to simulation config file")
 
 	// Actually parse the flags
 	flag.Parse()
 
-	// Validate the path first
-	if err := ValidateConfigPath(config.ConfigPath); err != nil {
+	// Validate the credentials config path
+	if err := ValidateConfigPath(config.CredentialsPath); err != nil {
+		return config, err
+	}
+	// Validate the simulation config path
+	if err := ValidateConfigPath(config.SimConfigPath); err != nil {
 		return config, err
 	}
 
 	return config, nil
 }
 
-// InitRtCreds initializes RT credentials from config file
-func (rc *RtConfig) InitRtCreds() error {
-	// Open config file
-	file, err := os.Open(rc.ConfigPath)
+// InitConfigs initializes RT credentials from config file
+func (rc *RtConfig) InitConfigs() error {
+	fileCreds, err := os.Open(rc.CredentialsPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer fileCreds.Close()
+	fileSimCfg, err := os.Open(rc.SimConfigPath)
+	if err != nil {
+		return err
+	}
+	defer fileSimCfg.Close()
 
-	// Init new YAML decode
-	d := yaml.NewDecoder(file)
-
-	// Start YAML decoding from file
-	if err := d.Decode(&rc.RtCredentials); err != nil {
+	if err := yaml.NewDecoder(fileCreds).Decode(&rc.RtCredentials); err != nil {
+		return err
+	}
+	if err := yaml.NewDecoder(fileSimCfg).Decode(&rc.SimulationCfg); err != nil {
 		return err
 	}
 
@@ -142,6 +162,13 @@ type BinariesInfo struct {
 	ArtifactsSize string `json:"artifactsSize"`
 	Optimization  string `json:"optimization"`
 }
+type RepoInfo struct {
+	Key           string `json:"key"`
+	RepoUrl       string `json:"url"`
+	RepoType      string `json:"rclass"`
+	PackageType   string `json:"packageType"`
+	RepoLayoutRef string `json:"repoLayoutRef"`
+}
 type RepoStorageInfo struct {
 	Key          string `json:"repoKey"`
 	RepoType     string `json:"repoType"`
@@ -178,6 +205,7 @@ type ArtifactInfo struct {
 func GetHttpResp(artDetails *jfauth.ServiceDetails, uri string) ([]byte, error) {
 	rtURL := (*artDetails).GetUrl() + uri
 	jflog.Debug("Getting '" + rtURL + "' details ...")
+	// fmt.Printf("Fetching : %s\n", rtURL)
 	req, err := http.NewRequest("GET", rtURL, nil)
 	if err != nil {
 		jflog.Error("http.NewRequest failed")
@@ -225,10 +253,31 @@ func GetCachedRemoteRepos(artDetails *jfauth.ServiceDetails) (*[]string, error) 
 
 	sort.Slice(storageInfoGB, func(i, j int) bool { return storageInfoGB[i].UsedSpaceGB > storageInfoGB[j].UsedSpaceGB })
 
-	for _, r := range storageInfoGB {
-		remoteRepos = append(remoteRepos, strings.ReplaceAll(r.Key, "-cache", ""))
-	}
+	//for _, r := range storageInfoGB {
+	//	remoteRepos = append(remoteRepos, strings.ReplaceAll(r.Key, "-cache", ""))
+	//}
+	remoteRepos = append([]string{"atlassian"}, remoteRepos...)
+	remoteRepos = append([]string{"docker-bintray-io"}, remoteRepos...)
 	return &remoteRepos, nil
+}
+
+// GetRepoInfo fetches info of repositories
+func GetRepoInfo(artDetails *jfauth.ServiceDetails, repoNames *[]RepoInputDetails) (*[]RepoInfo, error) {
+	repoList := []RepoInfo{}
+
+	for _, r := range *repoNames {
+		repoPath := "api/repositories/" + r.Name
+		resp, err := GetHttpResp(artDetails, repoPath)
+		if err != nil {
+			jflog.Error("Failed to get http resp for %s", repoPath)
+		}
+		repoInfo := &RepoInfo{}
+		if err := json.Unmarshal(resp, &repoInfo); err != nil {
+			return &repoList, err
+		}
+		repoList = append(repoList, *repoInfo)
+	}
+	return &repoList, nil
 }
 
 // GetRemoteArtifactFiles gets file details from remote repos
@@ -291,7 +340,7 @@ func main() {
 		jflog.Error("Cli parse failure")
 		os.Exit(-1)
 	}
-	if err := cfg.InitRtCreds(); err != nil {
+	if err := cfg.InitConfigs(); err != nil {
 		jflog.Error("Config parse failure")
 		os.Exit(-1)
 	}
@@ -310,55 +359,64 @@ func main() {
 	dutRtSvcID, err := refRtMgr.GetServiceId()
 	jflog.Info("DUT RT ServiceId = ", dutRtSvcID)
 
-	largeRemoteRepos, err := GetCachedRemoteRepos(&refRtDetails)
-	jflog.Info("Num of CACHE repos whose size is > 1GB : ", len(*largeRemoteRepos))
-	jflog.Info(fmt.Sprintf("repo list : %+v", *largeRemoteRepos))
+	remoteRepos, err := GetRepoInfo(&refRtDetails, &cfg.SimulationCfg.RemoteRepos)
+	for _, r := range *remoteRepos {
+		fmt.Printf("Fetching files in repo : %+v\n", r)
 
-	refRtLargeRemoteRepo, err := refRtMgr.GetRepository((*largeRemoteRepos)[0])
-	jflog.Info(fmt.Sprintf("Ref RT repo list : %+v", refRtLargeRemoteRepo))
-	dutRtLargeRemoteRepo, err := dutRtMgr.GetRepository((*largeRemoteRepos)[0])
-	jflog.Info(fmt.Sprintf("DUT RT repo list : %+v", dutRtLargeRemoteRepo))
-
-	if dutRtLargeRemoteRepo != nil && dutRtLargeRemoteRepo.Key == (*largeRemoteRepos)[0] {
-		jflog.Info(fmt.Sprintf("Large remote repo %s is present in DUT", dutRtLargeRemoteRepo.Key))
-		if err := dutRtMgr.DeleteRepository(dutRtLargeRemoteRepo.Key); err != nil {
-			jflog.Error(fmt.Sprintf("Failed to delete in the DUT large remote repo %s", dutRtLargeRemoteRepo.Key))
-			os.Exit(-1)
+		dutRemoteRepo, err := dutRtMgr.GetRepository(r.Key)
+		if dutRemoteRepo != nil && dutRemoteRepo.Key == r.Key {
+			jflog.Info(fmt.Sprintf("Remote repo %s is present in DUT", dutRemoteRepo.Key))
+			if err := dutRtMgr.DeleteRepository(dutRemoteRepo.Key); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to delete in the DUT remote repo %s", dutRemoteRepo.Key))
+				os.Exit(-1)
+			}
+			jflog.Info(fmt.Sprintf("Pausing after deleting %s in DUT", dutRemoteRepo.Key))
+			time.Sleep(5 * time.Second)
 		}
-		jflog.Info(fmt.Sprintf("Pausing after deleting %s in DUT", dutRtLargeRemoteRepo.Key))
-		time.Sleep(5 * time.Second)
-	}
+		switch r.PackageType {
+		case "maven":
+			params := services.NewMavenRemoteRepositoryParams()
+			params.Key = r.Key
+			params.Url = r.RepoUrl
+			params.RepoLayoutRef = r.RepoLayoutRef
+			params.Description = "A caching proxy repository for " + r.Key
+			params.XrayIndex = &[]bool{true}[0]
+			params.AssumedOfflinePeriodSecs = 600
+			if err = dutRtMgr.CreateRemoteRepository().Maven(params); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to create maven remote repo %s in DUT", r.Key))
+				os.Exit(-1)
+			}
+			break
+		case "docker":
+			params := services.NewDockerRemoteRepositoryParams()
+			params.Key = r.Key
+			params.Url = r.RepoUrl
+			params.RepoLayoutRef = "simple-default"
+			params.Description = "A caching proxy repository for " + r.Key
+			params.XrayIndex = &[]bool{true}[0]
+			params.AssumedOfflinePeriodSecs = 600
+			if err = dutRtMgr.CreateRemoteRepository().Docker(params); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to create docker remote repo %s in DUT", r.Key))
+				os.Exit(-1)
+			}
+			break
+		default:
+			jflog.Error(fmt.Sprintf("Unsupported PackageType %s", r.PackageType))
+		}
+		dutRemoteRepo, err = dutRtMgr.GetRepository(r.Key)
+		jflog.Info(fmt.Sprintf("After recreation DUT RT repo list : %+v", dutRemoteRepo))
 
-	params := services.NewDockerRemoteRepositoryParams()
-	params.Key = (*largeRemoteRepos)[0]
-	params.Url = "https://registry-1.docker.io/"
-	params.RepoLayoutRef = "simple-default"
-	params.Description = "A caching proxy repository for a registry-1.docker.io"
-	params.XrayIndex = &[]bool{true}[0]
-	params.AssumedOfflinePeriodSecs = 600
-	if err = dutRtMgr.CreateRemoteRepository().Docker(params); err != nil {
-		jflog.Error(fmt.Sprintf("Failed to remote repo %s in DUT", (*largeRemoteRepos)[0]))
-		os.Exit(-1)
-	}
-	dutRtLargeRemoteRepo, err = dutRtMgr.GetRepository((*largeRemoteRepos)[0])
-	jflog.Info(fmt.Sprintf("After recreation DUT RT repo list : %+v", dutRtLargeRemoteRepo))
-
-	rr := []string{(*largeRemoteRepos)[0]}
-	for _, r := range rr {
-		fmt.Printf("Fetching files in repo : %s\n", r)
-		files, err := GetRemoteArtifactFiles(&refRtDetails, r)
+		files, err := GetRemoteArtifactFiles(&refRtDetails, r.Key)
 		if err != nil {
 			jflog.Error(fmt.Sprintf("Failed to get artifact files for repo %s", r))
 		}
 		jflog.Info(fmt.Sprintf("repo %s has #files : %d", r, files.Len()))
-
-		for files.Len() > 0 {
-			felem := files.Front()
-			f := felem.Value.(string)
-			fmt.Printf("file : %s, Starting download\n", f)
+		for e := files.Front(); e != nil; e = e.Next() {
+			f := e.Value.(string)
+			fmt.Printf("Starting download of file : %s\n", f)
 			params := services.NewDownloadParams()
 			params.Pattern = f
-			params.Target = "mydownloads"
+			//params.Target = "mydownloads"
 			params.Recursive = true
 			params.IncludeDirs = false
 			params.Flat = false
@@ -374,10 +432,9 @@ func main() {
 
 			td, te, err := dutRtMgr.DownloadFiles(params)
 			if err != nil {
-				jflog.Error(fmt.Sprintf("file : %s, download failed", f))
+				fmt.Printf("file : %s, download failed\n", f)
 			}
-			jflog.Info(fmt.Sprintf("file : %s, td = %d, te = %d", f, td, te))
-			files.Remove(felem)
+			fmt.Printf("file : %s, td = %d, te = %d\n", f, td, te)
 		}
 	}
 
