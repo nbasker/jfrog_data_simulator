@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -66,6 +68,7 @@ type RepoInputDetails struct {
 }
 type SimConfig struct {
 	RemoteRepos []RepoInputDetails `json:"remoterepos"`
+	TargetDir   string             `yaml:"targetdir"`
 }
 
 // NewRtConfig returns a new decoded RtConfig struct
@@ -225,6 +228,47 @@ func GetHttpResp(artDetails *jfauth.ServiceDetails, uri string) ([]byte, error) 
 	return body, err
 }
 
+// DownloadArtifacts and write to a targetfile
+func DownloadArtifacts(artDetails *jfauth.ServiceDetails, uri string, target string) error {
+	rtURL := (*artDetails).GetUrl() + uri
+	jflog.Debug("Getting '" + rtURL + "' details ...")
+	// fmt.Printf("Fetching : %s\n", rtURL)
+	req, err := http.NewRequest("GET", rtURL, nil)
+	if err != nil {
+		jflog.Error("http.NewRequest failed")
+	}
+	req.SetBasicAuth((*artDetails).GetUser(), (*artDetails).GetApiKey())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		jflog.Error("http.DefaultClient.Do failed")
+	}
+	defer resp.Body.Close()
+
+	fpath := target + "/" + uri
+	//fmt.Printf("downloading to : %s\n", fpath)
+	fdir, _ := filepath.Split(fpath)
+	if _, err := os.Stat(fpath); os.IsNotExist(err) {
+		os.MkdirAll(fdir, 0700) // Create directory
+	}
+
+	// Create the file
+	out, err := os.Create(fpath)
+	if err != nil {
+		jflog.Error("Failed to create file : %s", fpath)
+		return err
+	}
+	defer out.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		jflog.Error("Failed to copy download to file : %s", fpath)
+	}
+	return err
+
+}
+
 // GetCachedRemoteRepos fetches storage info of repositories
 func GetCachedRemoteRepos(artDetails *jfauth.ServiceDetails) (*[]string, error) {
 	remoteRepos := []string{}
@@ -297,6 +341,9 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repo string) (*li
 			rmtPath = f
 		}
 		rmtURL := rmtBaseURL + rmtPath
+
+		//fmt.Printf("accumulated files : %d, remaining folders : %d, checking : %s\n", files.Len(), folders.Len(), rmtURL)
+
 		resp, err := GetHttpResp(artDetails, rmtURL)
 		if err != nil {
 			jflog.Error(fmt.Sprintf("GET HTTP failed for url : %s", rmtURL))
@@ -315,7 +362,7 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repo string) (*li
 		}
 		folders.Remove(felem)
 
-		if files.Len() >= 10 {
+		if files.Len() >= 100 {
 			break
 		}
 	}
@@ -413,28 +460,15 @@ func main() {
 		jflog.Info(fmt.Sprintf("repo %s has #files : %d", r, files.Len()))
 		for e := files.Front(); e != nil; e = e.Next() {
 			f := e.Value.(string)
-			fmt.Printf("Starting download of file : %s\n", f)
-			params := services.NewDownloadParams()
-			params.Pattern = f
-			//params.Target = "mydownloads"
-			params.Recursive = true
-			params.IncludeDirs = false
-			params.Flat = false
-			params.Explode = false
-			params.Symlink = true
-			params.ValidateSymlink = false
-			// Retries default value: 3
-			params.Retries = 5
-			// SplitCount default value: 3
-			params.SplitCount = 2
-			// MinSplitSize default value: 5120
-			params.MinSplitSize = 7168
-
-			td, te, err := dutRtMgr.DownloadFiles(params)
-			if err != nil {
-				fmt.Printf("file : %s, download failed\n", f)
+			if f[0] == '/' {
+				f = strings.Replace(f, "/", "", 1)
 			}
-			fmt.Printf("file : %s, td = %d, te = %d\n", f, td, te)
+			//fmt.Printf("Starting download of file : %s\n", f)
+
+			err := DownloadArtifacts(&dutRtDetails, f, cfg.SimulationCfg.TargetDir)
+			if err != nil {
+				jflog.Error(fmt.Sprintf("GET HTTP failed for file : %s", f))
+			}
 		}
 	}
 
