@@ -18,6 +18,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"jfrog.com/datasim/remoteartifacts"
 	"time"
 
 	"github.com/jfrog/jfrog-client-go/artifactory"
@@ -324,51 +325,6 @@ func GetRepoInfo(artDetails *jfauth.ServiceDetails, repoNames *[]RepoInputDetail
 	return &repoList, nil
 }
 
-// GetRemoteArtifactFiles gets file details from remote repos
-func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repo string) (*list.List, error) {
-	folders := list.New()
-	files := list.New()
-	rmtBaseURL := "api/storage"
-
-	folders.PushBack(repo)
-	for folders.Len() > 0 {
-		felem := folders.Front()
-		f := felem.Value.(string)
-		rmtPath := ""
-		if f[0] != '/' {
-			rmtPath = "/" + f
-		} else {
-			rmtPath = f
-		}
-		rmtURL := rmtBaseURL + rmtPath
-
-		//fmt.Printf("accumulated files : %d, remaining folders : %d, checking : %s\n", files.Len(), folders.Len(), rmtURL)
-
-		resp, err := GetHttpResp(artDetails, rmtURL)
-		if err != nil {
-			jflog.Error(fmt.Sprintf("GET HTTP failed for url : %s", rmtURL))
-		}
-		ArtiInfo := &ArtifactInfo{}
-		if err := json.Unmarshal(resp, &ArtiInfo); err != nil {
-			jflog.Error(fmt.Sprintf("Unable to fetch file and folders for url : %s", rmtURL))
-			continue
-		}
-		for _, c := range ArtiInfo.Children {
-			if c.Folder == true {
-				folders.PushBack(rmtPath + c.Uri)
-			} else {
-				files.PushBack(rmtPath + c.Uri)
-			}
-		}
-		folders.Remove(felem)
-
-		if files.Len() >= 100 {
-			break
-		}
-	}
-	return files, nil
-}
-
 func main() {
 
 	f, err := os.OpenFile("./datasim.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -453,7 +409,8 @@ func main() {
 		dutRemoteRepo, err = dutRtMgr.GetRepository(r.Key)
 		jflog.Info(fmt.Sprintf("After recreation DUT RT repo list : %+v", dutRemoteRepo))
 
-		files, err := GetRemoteArtifactFiles(&refRtDetails, r.Key)
+		var files *list.List
+		files, err = remoteartifacts.GetRemoteArtifactFiles(&refRtDetails, r.Key)
 		if err != nil {
 			jflog.Error(fmt.Sprintf("Failed to get artifact files for repo %s", r))
 		}
