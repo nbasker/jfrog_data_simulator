@@ -6,11 +6,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -19,13 +17,12 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"jfrog.com/datasim/remoteartifacts"
-	//"time"
+	"time"
 
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
-	//"github.com/jfrog/jfrog-client-go/artifactory/services"
+	"github.com/jfrog/jfrog-client-go/artifactory/services"
 
-	//"github.com/jfrog/jfrog-client-go/artifactory/services"
 	//serviceutils "github.com/jfrog/jfrog-client-go/artifactory/services/utils"
 	jfauth "github.com/jfrog/jfrog-client-go/auth"
 	"github.com/jfrog/jfrog-client-go/config"
@@ -229,47 +226,6 @@ func GetHttpResp(artDetails *jfauth.ServiceDetails, uri string) ([]byte, error) 
 	return body, err
 }
 
-// DownloadArtifacts and write to a targetfile
-func DownloadArtifacts(artDetails *jfauth.ServiceDetails, uri string, target string) error {
-	rtURL := (*artDetails).GetUrl() + uri
-	jflog.Debug("Getting '" + rtURL + "' details ...")
-	// fmt.Printf("Fetching : %s\n", rtURL)
-	req, err := http.NewRequest("GET", rtURL, nil)
-	if err != nil {
-		jflog.Error("http.NewRequest failed")
-	}
-	req.SetBasicAuth((*artDetails).GetUser(), (*artDetails).GetApiKey())
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		jflog.Error("http.DefaultClient.Do failed")
-	}
-	defer resp.Body.Close()
-
-	fpath := target + "/" + uri
-	fdir, _ := filepath.Split(fpath)
-	if _, err := os.Stat(fpath); os.IsNotExist(err) {
-		os.MkdirAll(fdir, 0700) // Create directory
-	}
-
-	// Create the file
-	out, err := os.Create(fpath)
-	if err != nil {
-		jflog.Error("Failed to create file : %s", fpath)
-		return err
-	}
-	defer out.Close()
-
-	// Write the body to file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		jflog.Error("Failed to copy download to file : %s", fpath)
-	}
-	fmt.Printf("downloading to complete: %s\n", fpath)
-	return err
-
-}
-
 // GetCachedRemoteRepos fetches storage info of repositories
 func GetCachedRemoteRepos(artDetails *jfauth.ServiceDetails) (*[]string, error) {
 	remoteRepos := []string{}
@@ -351,6 +307,10 @@ func main() {
 	refRtDetails := cfg.GetRefRtDetails()
 	refRtMgr, err := cfg.GetRtMgr(refRtDetails)
 	refRtVer, err := refRtMgr.GetVersion()
+	if err != nil {
+		jflog.Error("Failure in getting Ref RT Version")
+		os.Exit(-1)
+	}
 	jflog.Info("Ref RT Version = ", refRtVer)
 	refRtSvcID, err := refRtMgr.GetServiceId()
 	jflog.Info("Ref RT ServiceId = ", refRtSvcID)
@@ -358,6 +318,10 @@ func main() {
 	dutRtDetails := cfg.GetDutRtDetails()
 	dutRtMgr, err := cfg.GetRtMgr(dutRtDetails)
 	dutRtVer, err := dutRtMgr.GetVersion()
+	if err != nil {
+		jflog.Error("Failure in getting DUT RT Version")
+		os.Exit(-1)
+	}
 	jflog.Info("DUT RT Version = ", dutRtVer)
 	dutRtSvcID, err := refRtMgr.GetServiceId()
 	jflog.Info("DUT RT ServiceId = ", dutRtSvcID)
@@ -367,50 +331,48 @@ func main() {
 	for _, r := range *remoteRepos {
 		fmt.Printf("Fetching files in repo : %+v\n", r)
 
-		/*
-			dutRemoteRepo, err := dutRtMgr.GetRepository(r.Key)
-			if dutRemoteRepo != nil && dutRemoteRepo.Key == r.Key {
-				jflog.Info(fmt.Sprintf("Remote repo %s is present in DUT", dutRemoteRepo.Key))
-				if err := dutRtMgr.DeleteRepository(dutRemoteRepo.Key); err != nil {
-					jflog.Error(fmt.Sprintf("Failed to delete in the DUT remote repo %s", dutRemoteRepo.Key))
-					os.Exit(-1)
-				}
-				jflog.Info(fmt.Sprintf("Pausing after deleting %s in DUT", dutRemoteRepo.Key))
-				time.Sleep(5 * time.Second)
+		dutRemoteRepo, err := dutRtMgr.GetRepository(r.Key)
+		if dutRemoteRepo != nil && dutRemoteRepo.Key == r.Key {
+			jflog.Info(fmt.Sprintf("Remote repo %s is present in DUT", dutRemoteRepo.Key))
+			if err := dutRtMgr.DeleteRepository(dutRemoteRepo.Key); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to delete in the DUT remote repo %s", dutRemoteRepo.Key))
+				os.Exit(-1)
 			}
-			switch r.PackageType {
-			case "maven":
-				params := services.NewMavenRemoteRepositoryParams()
-				params.Key = r.Key
-				params.Url = r.RepoUrl
-				params.RepoLayoutRef = r.RepoLayoutRef
-				params.Description = "A caching proxy repository for " + r.Key
-				params.XrayIndex = &[]bool{true}[0]
-				params.AssumedOfflinePeriodSecs = 600
-				if err = dutRtMgr.CreateRemoteRepository().Maven(params); err != nil {
-					jflog.Error(fmt.Sprintf("Failed to create maven remote repo %s in DUT", r.Key))
-					os.Exit(-1)
-				}
-				break
-			case "docker":
-				params := services.NewDockerRemoteRepositoryParams()
-				params.Key = r.Key
-				params.Url = r.RepoUrl
-				params.RepoLayoutRef = "simple-default"
-				params.Description = "A caching proxy repository for " + r.Key
-				params.XrayIndex = &[]bool{true}[0]
-				params.AssumedOfflinePeriodSecs = 600
-				if err = dutRtMgr.CreateRemoteRepository().Docker(params); err != nil {
-					jflog.Error(fmt.Sprintf("Failed to create docker remote repo %s in DUT", r.Key))
-					os.Exit(-1)
-				}
-				break
-			default:
-				jflog.Error(fmt.Sprintf("Unsupported PackageType %s", r.PackageType))
+			jflog.Info(fmt.Sprintf("Pausing after deleting %s in DUT", dutRemoteRepo.Key))
+			time.Sleep(5 * time.Second)
+		}
+		switch r.PackageType {
+		case "maven":
+			params := services.NewMavenRemoteRepositoryParams()
+			params.Key = r.Key
+			params.Url = r.RepoUrl
+			params.RepoLayoutRef = r.RepoLayoutRef
+			params.Description = "A caching proxy repository for " + r.Key
+			params.XrayIndex = &[]bool{true}[0]
+			params.AssumedOfflinePeriodSecs = 600
+			if err = dutRtMgr.CreateRemoteRepository().Maven(params); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to create maven remote repo %s in DUT", r.Key))
+				os.Exit(-1)
 			}
-			dutRemoteRepo, err = dutRtMgr.GetRepository(r.Key)
-			jflog.Info(fmt.Sprintf("After recreation DUT RT repo list : %+v", dutRemoteRepo))
-		*/
+			break
+		case "docker":
+			params := services.NewDockerRemoteRepositoryParams()
+			params.Key = r.Key
+			params.Url = r.RepoUrl
+			params.RepoLayoutRef = "simple-default"
+			params.Description = "A caching proxy repository for " + r.Key
+			params.XrayIndex = &[]bool{true}[0]
+			params.AssumedOfflinePeriodSecs = 600
+			if err = dutRtMgr.CreateRemoteRepository().Docker(params); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to create docker remote repo %s in DUT", r.Key))
+				os.Exit(-1)
+			}
+			break
+		default:
+			jflog.Error(fmt.Sprintf("Unsupported PackageType %s", r.PackageType))
+		}
+		dutRemoteRepo, err = dutRtMgr.GetRepository(r.Key)
+		jflog.Info(fmt.Sprintf("After recreation DUT RT repo list : %+v", dutRemoteRepo))
 		repoList = append(repoList, r.Key)
 	}
 
@@ -420,20 +382,10 @@ func main() {
 		jflog.Error(fmt.Sprintf("Failed remoteartifacts.GetRemoteArtifactFiles()"))
 	}
 	jflog.Info(fmt.Sprintf("Number of artifacts : %d", files.Len()))
-	/*
-		for e := files.Front(); e != nil; e = e.Next() {
-			f := e.Value.(string)
-			if f[0] == '/' {
-				f = strings.Replace(f, "/", "", 1)
-			}
-			fmt.Printf("rtfact to download : %s\n", f)
-
-				err := DownloadArtifacts(&dutRtDetails, f, cfg.SimulationCfg.TargetDir)
-				if err != nil {
-					jflog.Error(fmt.Sprintf("GET HTTP failed for file : %s", f))
-				}
-		}
-	*/
+	err = remoteartifacts.DownloadRemoteArtifacts(&dutRtDetails, files, cfg.SimulationCfg.TargetDir)
+	if err != nil {
+		jflog.Error(fmt.Sprintf("Failed remoteartifacts.GetRemoteArtifactFiles()"))
+	}
 
 	jflog.Info("Ending data simulator")
 }

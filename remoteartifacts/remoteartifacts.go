@@ -6,8 +6,12 @@ import (
 	"fmt"
 	jfauth "github.com/jfrog/jfrog-client-go/auth"
 	jflog "github.com/jfrog/jfrog-client-go/utils/log"
+	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -117,7 +121,7 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 			select {
 			case f := <-files:
 				rtfacts.PushBack(f)
-				if rtfacts.Len()%100 == 0 {
+				if rtfacts.Len()%1000 == 0 {
 					fmt.Printf("collector_goroutine() artifact : %s, rt-count = %d\n", f, rtfacts.Len())
 				}
 			case <-timeout:
@@ -135,4 +139,87 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 	close(files)
 
 	return rtfacts, nil
+}
+
+func downloadRemoteArtifactWorker(artDetails *jfauth.ServiceDetails, chFiles <-chan string, tgtDir string) {
+	rtBase := (*artDetails).GetUrl()
+	dlcount := 0
+	for f := range chFiles {
+		rtURL := rtBase + f
+		jflog.Debug("Getting '" + rtURL + "' details ...")
+		// fmt.Printf("Fetching : %s\n", rtURL)
+		req, err := http.NewRequest("GET", rtURL, nil)
+		if err != nil {
+			jflog.Error("http.NewRequest failed")
+		}
+		req.SetBasicAuth((*artDetails).GetUser(), (*artDetails).GetApiKey())
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			jflog.Error("http.DefaultClient.Do failed")
+		}
+		defer resp.Body.Close()
+
+		fpath := tgtDir + "/" + f
+		fdir, _ := filepath.Split(fpath)
+		if _, err := os.Stat(fpath); os.IsNotExist(err) {
+			os.MkdirAll(fdir, 0700) // Create directory
+		}
+
+		// Create the file
+		out, err := os.Create(fpath)
+		if err != nil {
+			jflog.Error("Failed to create file : %s", fpath)
+			continue
+		}
+		defer out.Close()
+
+		// Write the body to file
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			jflog.Error("Failed to copy download to file : %s", fpath)
+		}
+		//fmt.Printf("downloading to complete: %s\n", fpath)
+		dlcount++
+	}
+	//fmt.Printf("downloadRemoteArtifactWorker() complete, downloaded %d files\n", dlcount)
+	jflog.Info(fmt.Sprintf("downloadRemoteArtifactWorker() complete, downloaded %d files", dlcount))
+}
+
+// DownloadArtifacts and write to a target directory
+func DownloadRemoteArtifacts(artDetails *jfauth.ServiceDetails, rtfacts *list.List, tgtDir string) error {
+	files := make(chan string, 1024)
+
+	var workerg sync.WaitGroup
+	const numWorkers = 40
+	workerg.Add(numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		go func() {
+			downloadRemoteArtifactWorker(artDetails, files, tgtDir)
+			workerg.Done()
+		}()
+	}
+	fmt.Printf("Created %d downloadRemoteArtifactWorker() go routines\n", numWorkers)
+
+	count := 1
+	for e := rtfacts.Front(); e != nil; e = e.Next() {
+		f := e.Value.(string)
+		if f[0] == '/' {
+			f = strings.Replace(f, "/", "", 1)
+		}
+
+		files <- f
+		if count%1000 == 0 {
+			fmt.Printf("completed sending %d rtfacts for download\n", count)
+			break
+		}
+		count++
+	}
+	fmt.Printf("Completed sending %d rtfacts for downloading, waiting for 60s\n", count)
+	time.Sleep(60 * time.Second)
+	close(files)
+	fmt.Println("Closing files channel, waiting for all downloadRemoteArtifactWorker() to complete")
+	workerg.Wait()
+	fmt.Println("All downloadRemoteArtifactWorker() completed")
+	return nil
 }
