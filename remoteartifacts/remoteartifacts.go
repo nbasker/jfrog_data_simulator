@@ -4,27 +4,21 @@ import (
 	"container/list"
 	"encoding/json"
 	"fmt"
-	jfauth "github.com/jfrog/jfrog-client-go/auth"
-	jflog "github.com/jfrog/jfrog-client-go/utils/log"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
-)
 
-type PathInfo struct {
-	Uri    string `json:"uri"`
-	Folder bool   `json:"folder"`
-}
-type ArtifactInfo struct {
-	Repo     string     `json:"repo"`
-	Path     string     `json:"path"`
-	Children []PathInfo `json:"children"`
-}
+	jfauth "github.com/jfrog/jfrog-client-go/auth"
+	jflog "github.com/jfrog/jfrog-client-go/utils/log"
+)
 
 // getHttpResp issues a GET request and returns response body
 func getHttpResp(artDetails *jfauth.ServiceDetails, uri string) ([]byte, error) {
@@ -51,6 +45,119 @@ func getHttpResp(artDetails *jfauth.ServiceDetails, uri string) ([]byte, error) 
 	return body, err
 }
 
+type FileStorageInfo struct {
+	StorageType      string `json:"storageType"`
+	StorageDirectory string `json:"storageDirectory"`
+	TotalSpace       string `json:"totalSpace"`
+	UsedSpace        string `json:"usedSpace"`
+	FreeSpace        string `json:"freeSpace"`
+}
+type BinariesInfo struct {
+	BinariesCount string `json:"binariesCount"`
+	BinariesSize  string `json:"binariesSize"`
+	ArtifactsSize string `json:"artifactsSize"`
+	Optimization  string `json:"optimization"`
+}
+type RepoStorageInfo struct {
+	Key          string `json:"repoKey"`
+	RepoType     string `json:"repoType"`
+	FoldersCount int    `json:"foldersCount"`
+	FilesCount   int    `json:"filesCount"`
+	UsedSpace    string `json:"usedSpace"`
+	PackageType  string `json:"packageType"`
+}
+type RepoStorageUsedSpaceInfo struct {
+	Key          string  `json:"repoKey"`
+	RepoType     string  `json:"repoType"`
+	FoldersCount int     `json:"foldersCount"`
+	FilesCount   int     `json:"filesCount"`
+	UsedSpaceGB  float64 `json:"usedSpaceGB"`
+	PackageType  string  `json:"packageType"`
+}
+type StorageInfo struct {
+	FileStorage     FileStorageInfo   `json:"fileStoreSummary"`
+	BinariesStorage BinariesInfo      `json:"binariesSummary"`
+	RepoStorage     []RepoStorageInfo `json:"repositoriesSummaryList"`
+}
+
+// GetCachedRemoteRepos fetches storage info of repositories
+func GetCachedRemoteRepos(artDetails *jfauth.ServiceDetails) (*[]string, error) {
+	remoteRepos := []string{}
+	storageInfoGB := []RepoStorageUsedSpaceInfo{}
+	resp, err := getHttpResp(artDetails, "api/storageinfo")
+	if err != nil {
+		jflog.Error("Failed to get http resp for api/storageinfo")
+	}
+	StorageInfo := &StorageInfo{}
+	if err := json.Unmarshal(resp, &StorageInfo); err != nil {
+		return &remoteRepos, err
+	}
+
+	// Gather repoType CACHE that has storage space > 1 GB
+	for _, r := range *&StorageInfo.RepoStorage {
+		if r.RepoType == "CACHE" && strings.Contains(r.UsedSpace, "GB") {
+			re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
+			usedSpaceGB, err := strconv.ParseFloat(re.FindString(r.UsedSpace), 64)
+			if err != nil {
+				jflog.Error("Failed used space to float for repo %s", r.Key)
+			}
+			storageInfoGB = append(storageInfoGB, RepoStorageUsedSpaceInfo{r.Key, r.RepoType, r.FoldersCount, r.FilesCount, usedSpaceGB, r.PackageType})
+
+		}
+	}
+
+	sort.Slice(storageInfoGB, func(i, j int) bool { return storageInfoGB[i].UsedSpaceGB > storageInfoGB[j].UsedSpaceGB })
+
+	//for _, r := range storageInfoGB {
+	//	remoteRepos = append(remoteRepos, strings.ReplaceAll(r.Key, "-cache", ""))
+	//}
+	remoteRepos = append([]string{"atlassian"}, remoteRepos...)
+	remoteRepos = append([]string{"docker-bintray-io"}, remoteRepos...)
+	return &remoteRepos, nil
+}
+
+// RepoInfo to unmarshall from json response
+type RepoInfo struct {
+	Key           string `json:"key"`
+	RepoUrl       string `json:"url"`
+	RepoType      string `json:"rclass"`
+	PackageType   string `json:"packageType"`
+	RepoLayoutRef string `json:"repoLayoutRef"`
+}
+
+// GetRepoInfo fetches info of repositories
+func GetRepoInfo(artDetails *jfauth.ServiceDetails, repoNames *[]string) (*[]RepoInfo, error) {
+	repoList := []RepoInfo{}
+
+	for _, r := range *repoNames {
+		repoPath := "api/repositories/" + r
+		resp, err := getHttpResp(artDetails, repoPath)
+		if err != nil {
+			jflog.Error("Failed to get http resp for %s", repoPath)
+		}
+		repoInfo := &RepoInfo{}
+		if err := json.Unmarshal(resp, &repoInfo); err != nil {
+			return &repoList, err
+		}
+		repoList = append(repoList, *repoInfo)
+	}
+	return &repoList, nil
+}
+
+// PathInfo struct to unmarshall json artifact info
+type PathInfo struct {
+	Uri    string `json:"uri"`
+	Folder bool   `json:"folder"`
+}
+
+// ArtifactInfo struct to unmarshall json artifact info
+type ArtifactInfo struct {
+	Repo     string     `json:"repo"`
+	Path     string     `json:"path"`
+	Children []PathInfo `json:"children"`
+}
+
+// getRemoteArtifactWorker fetches remote artifacts
 func getRemoteArtifactWorker(artDetails *jfauth.ServiceDetails, chFolder chan string, chFile chan<- string) {
 	rmtBaseURL := "api/storage"
 	for f := range chFolder {
@@ -141,6 +248,7 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 	return rtfacts, nil
 }
 
+// downloadRemoteArtifactWorker that receives artifact path and downloads it in tgtDir location
 func downloadRemoteArtifactWorker(artDetails *jfauth.ServiceDetails, chFiles <-chan string, tgtDir string) {
 	rtBase := (*artDetails).GetUrl()
 	dlcount := 0
