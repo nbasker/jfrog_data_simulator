@@ -64,6 +64,8 @@ func main() {
 		cfgRepos = append(cfgRepos, r.Name)
 	}
 
+	go remoteartifacts.PollMetricsRestEndpoint(&dutRtDetails)
+
 	repoList := []string{}
 	remoteRepos, err := remoteartifacts.GetRepoInfo(&refRtDetails, &cfgRepos)
 	for _, r := range *remoteRepos {
@@ -79,7 +81,6 @@ func main() {
 			jflog.Info(fmt.Sprintf("Pausing after deleting %s in DUT", dutRemoteRepo.Key))
 			time.Sleep(5 * time.Second)
 		}
-
 		switch r.PackageType {
 		case "maven":
 			params := services.NewMavenRemoteRepositoryParams()
