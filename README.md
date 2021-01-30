@@ -10,11 +10,11 @@ The tool performs the simulation in DeviceUnderTest RT installation. In addition
 *credentials.yaml*
 ```
 refartiserver:
-    artiurl: "https://stg-repo.jfrog.info/artifactory/"
+    artiurl: "https://<reference-rt-instance>/artifactory/"
     artiusername: "pickard"
     artiapikey: "<api-key>"
 dutartiserver:
-    artiurl: "http://a99be6dd5e2df44239812e59a39094f6-855602582.ap-south-1.elb.amazonaws.com/artifactory/"
+    artiurl: "http://<dut-rt-instance>/artifactory/"
     artiusername: "spock"
     artiapikey: "<api-key>"
 ```
