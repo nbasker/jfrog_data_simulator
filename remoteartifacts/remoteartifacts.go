@@ -228,6 +228,7 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 			select {
 			case f := <-files:
 				rtfacts.PushBack(f)
+				jflog.Debug(f)
 				if rtfacts.Len()%1000 == 0 {
 					fmt.Printf("collector_goroutine() artifact : %s, rt-count = %d\n", f, rtfacts.Len())
 				}
@@ -294,19 +295,6 @@ func downloadRemoteArtifactWorker(artDetails *jfauth.ServiceDetails, chFiles <-c
 	jflog.Info(fmt.Sprintf("downloadRemoteArtifactWorker() complete, downloaded %d files", dlcount))
 }
 
-func PollMetricsRestEndpoint(artDetails *jfauth.ServiceDetails) {
-	fmt.Printf("Polling api/v1/metrics REST end point\n")
-	url := "api/v1/metrics"
-	for {
-		resp, err := getHttpResp(artDetails, url)
-		if err != nil {
-			fmt.Printf("GET HTTP failed for url : %s, resp = %s\n", url, resp)
-			jflog.Error(fmt.Sprintf("GET HTTP failed for url : %s, resp = %s", url, resp))
-		}
-		time.Sleep(60 * time.Second)
-	}
-}
-
 // DownloadArtifacts and write to a target directory
 func DownloadRemoteArtifacts(artDetails *jfauth.ServiceDetails, rtfacts *list.List, tgtDir string) error {
 	files := make(chan string, 1024)
@@ -343,4 +331,18 @@ func DownloadRemoteArtifacts(artDetails *jfauth.ServiceDetails, rtfacts *list.Li
 	workerg.Wait()
 	fmt.Println("All downloadRemoteArtifactWorker() completed")
 	return nil
+}
+
+// PollMetricsRestEndpoint polls the REST API periodically
+func PollMetricsRestEndpoint(artDetails *jfauth.ServiceDetails) {
+	fmt.Printf("Polling api/v1/metrics REST end point\n")
+	url := "api/v1/metrics"
+	for {
+		resp, err := getHttpResp(artDetails, url)
+		if err != nil {
+			fmt.Printf("GET HTTP failed for url : %s, resp = %s\n", url, resp)
+			jflog.Error(fmt.Sprintf("GET HTTP failed for url : %s, resp = %s", url, resp))
+		}
+		time.Sleep(60 * time.Second)
+	}
 }
