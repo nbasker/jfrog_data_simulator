@@ -28,5 +28,14 @@ targetdir: "./mydownloads"
 ```
 
 ## Usage
+This data simulation utility can be used by doing the following steps
+* Create the *credentials.yaml* and *simconfig.yaml* files in the same directory where this git repo is cloned
+* Run the command *go run main.go*, this shall perform the simulation. In the same directory a file by name datasim.log is created.
 
 ## Simulations
+The simulation supported are
+* The remote-http-connection simulation
+
+## To Be Done Work Items
+* Create more sophisticated simconfig.yaml that can support global config and simulation specific config
+* Add more simulations
