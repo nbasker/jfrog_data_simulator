@@ -21,10 +21,18 @@ dutartiserver:
 
 *simconfig.yaml*
 ```
-remoterepos:
-  - name: "atlassian"
-  - name: "jfrog-libs"
-targetdir: "./mydownloads"
+# Generic Simulator Config
+genericconfig:
+  metricpoll:
+    artifactory: true
+    metricpollfreq: 60
+
+# Remote Http Connection Simulator Config
+remotehttpconn:
+  remoterepos:
+    - "atlassian"
+    - "jfrog-libs"
+  targetdir: "./remotehttpconndload"
 ```
 
 ## Usage
