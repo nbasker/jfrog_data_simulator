@@ -6,7 +6,7 @@ import (
 
 	jflog "github.com/jfrog/jfrog-client-go/utils/log"
 	"jfrog.com/datasim/confighandler"
-	//"jfrog.com/datasim/remoteartifacts"
+	"jfrog.com/datasim/remoteartifacts"
 	"jfrog.com/datasim/simulator"
 )
 
@@ -46,6 +46,10 @@ func main() {
 
 	dutRtDetails := cfg.GetDutRtDetails()
 	dutRtMgr, err := cfg.GetRtMgr(dutRtDetails)
+	if err != nil {
+		jflog.Error("Failure in getting DUT RT Manager")
+		os.Exit(-1)
+	}
 	dutRtVer, err := dutRtMgr.GetVersion()
 	if err != nil {
 		jflog.Error("Failure in getting DUT RT Version")
@@ -55,16 +59,15 @@ func main() {
 	dutRtSvcID, err := refRtMgr.GetServiceId()
 	jflog.Info("DUT RT ServiceId = ", dutRtSvcID)
 
-	cfgRepos := []string{}
-	for _, r := range cfg.SimulationCfg.RemoteRepos {
-		cfgRepos = append(cfgRepos, r.Name)
+	fmt.Printf("RemoteHttpConnCfg-RemoteRepos = %+v\n", cfg.SimulationCfg.RemoteHttpConnCfg.RemoteRepos)
+	fmt.Printf("GenericSimCfg = %+v\n", cfg.SimulationCfg.GenericSimCfg.MetricPoll)
+
+	if cfg.SimulationCfg.GenericSimCfg.MetricPoll.Artifactory == true {
+		go remoteartifacts.PollArtiMetricsRestEndpoint(&dutRtDetails, cfg.SimulationCfg.GenericSimCfg.MetricPoll.MetricPollFreq)
 	}
 
-	// poll enabled in config
-	// go remoteartifacts.PollMetricsRestEndpoint(&dutRtDetails)
-
 	dataSim := simulator.NewSimulator(&refRtDetails, &dutRtDetails, &refRtMgr, &dutRtMgr)
-	err = dataSim.SimRemoteHttpConns(&cfgRepos, cfg.SimulationCfg.TargetDir)
+	err = dataSim.SimRemoteHttpConns(&cfg.SimulationCfg.RemoteHttpConnCfg.RemoteRepos, cfg.SimulationCfg.RemoteHttpConnCfg.TargetDir)
 	if err != nil {
 		jflog.Error(fmt.Sprintf("Failed simulation of RemoteHttpConns"))
 	}

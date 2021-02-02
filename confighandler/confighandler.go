@@ -9,8 +9,8 @@ import (
 	"github.com/jfrog/jfrog-client-go/artifactory"
 	"github.com/jfrog/jfrog-client-go/artifactory/auth"
 	jfauth "github.com/jfrog/jfrog-client-go/auth"
-	//jflog "github.com/jfrog/jfrog-client-go/utils/log"
 	"github.com/jfrog/jfrog-client-go/config"
+	jflog "github.com/jfrog/jfrog-client-go/utils/log"
 	"gopkg.in/yaml.v2"
 )
 
@@ -46,12 +46,20 @@ type RtUrlCreds struct {
 		ArtiApikey   string `yaml:"artiapikey"`
 	} `yaml:"dutartiserver"`
 }
-type RepoInputDetails struct {
-	Name string `yaml:"name"`
+type GenericSimConfig struct {
+	MetricPoll struct {
+		Artifactory    bool `yaml:"artifactory"`
+		Xray           bool `yaml:"xray"`
+		MetricPollFreq int  `yaml:"metricpollfreq"`
+	} `yaml:"metricpoll"`
+}
+type RemoteHttpConn struct {
+	RemoteRepos []string `yaml:"remoterepos"`
+	TargetDir   string   `yaml:"targetdir"`
 }
 type SimConfig struct {
-	RemoteRepos []RepoInputDetails `json:"remoterepos"`
-	TargetDir   string             `yaml:"targetdir"`
+	GenericSimCfg     GenericSimConfig `yaml:"genericconfig"`
+	RemoteHttpConnCfg RemoteHttpConn   `yaml:"remotehttpconn"`
 }
 
 // NewRtConfig returns a new decoded RtConfig struct
@@ -94,6 +102,7 @@ func (rc *RtConfig) InitConfigs() error {
 		return err
 	}
 	if err := yaml.NewDecoder(fileSimCfg).Decode(&rc.SimulationCfg); err != nil {
+		jflog.Error("yaml decode failure SimulationCfg")
 		return err
 	}
 

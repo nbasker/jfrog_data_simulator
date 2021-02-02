@@ -334,7 +334,7 @@ func DownloadRemoteArtifacts(artDetails *jfauth.ServiceDetails, rtfacts *list.Li
 }
 
 // PollMetricsRestEndpoint polls the REST API periodically
-func PollMetricsRestEndpoint(artDetails *jfauth.ServiceDetails) {
+func PollArtiMetricsRestEndpoint(artDetails *jfauth.ServiceDetails, intervalSecs int) {
 	fmt.Printf("Polling api/v1/metrics REST end point\n")
 	url := "api/v1/metrics"
 	for {
@@ -343,6 +343,6 @@ func PollMetricsRestEndpoint(artDetails *jfauth.ServiceDetails) {
 			fmt.Printf("GET HTTP failed for url : %s, resp = %s\n", url, resp)
 			jflog.Error(fmt.Sprintf("GET HTTP failed for url : %s, resp = %s", url, resp))
 		}
-		time.Sleep(60 * time.Second)
+		time.Sleep(time.Duration(intervalSecs) * time.Second)
 	}
 }
