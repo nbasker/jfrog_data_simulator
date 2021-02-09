@@ -73,6 +73,30 @@ func (s *Simulator) SimRemoteHttpConns(cfgRepos *[]string, tgtDir string) error 
 				os.Exit(-1)
 			}
 			break
+		case "debian":
+			params := services.NewDebianRemoteRepositoryParams()
+			params.Key = r.Key
+			params.Url = r.RepoUrl
+			params.RepoLayoutRef = r.RepoLayoutRef
+			params.Description = "A caching proxy repository for " + r.Key
+			params.XrayIndex = &[]bool{true}[0]
+			params.AssumedOfflinePeriodSecs = 600
+			if err = (*s.DutRtMgr).CreateRemoteRepository().Debian(params); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to create debian remote repo %s in DUT", r.Key))
+				os.Exit(-1)
+			}
+		case "npm":
+			params := services.NewPypiRemoteRepositoryParams()
+			params.Key = r.Key
+			params.Url = r.RepoUrl
+			params.RepoLayoutRef = "simple-default"
+			params.Description = "A caching proxy repository for " + r.Key
+			params.XrayIndex = &[]bool{true}[0]
+			params.AssumedOfflinePeriodSecs = 600
+			if err = (*s.DutRtMgr).CreateRemoteRepository().Pypi(params); err != nil {
+				jflog.Error(fmt.Sprintf("Failed to create debian remote repo %s in DUT", r.Key))
+				os.Exit(-1)
+			}
 		default:
 			jflog.Error(fmt.Sprintf("Unsupported PackageType %s", r.PackageType))
 		}
@@ -93,3 +117,16 @@ func (s *Simulator) SimRemoteHttpConns(cfgRepos *[]string, tgtDir string) error 
 	}
 	return err
 }
+
+/*
+func (s *Simulator) SimDbConns() error {
+	aqls := []string{
+		`items.find({"name" : {"$match":"*.jar"}}).sort({"$asc" : ["repo","name"]})`,
+		`items.find({"modified" : {"$last" : "3d"}})`,
+		`items.find().include("*")`,
+		`items.find({"size" : {"$gt":"5000"},"name":{"$match":"*.jar"},"$or":[{"repo" : "jfrog-libs-cache", "repo" : "ubuntu-cache" }]})`,
+		`items.find({"name" : {"$match":"*.jar"}}).sort({"$desc" : ["repo","name"]})`,
+		`items.find({"size" : {"$lt":"10000"},"name":{"$match":"*.jar"},"$or":[{"repo" : "jfrog-libs-cache", "repo" : "ubuntu-cache" }]})`,
+	}
+}
+*/

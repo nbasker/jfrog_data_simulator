@@ -219,12 +219,13 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 	}(repos, folders)
 	fmt.Printf("Pushed initial remote repo's\n")
 
+	const getArtiTimeout = 60
 	var collectorg sync.WaitGroup
 	collectorg.Add(1)
 	go func() {
 		defer collectorg.Done()
 		for {
-			timeout := time.After(60 * time.Second)
+			timeout := time.After(getArtiTimeout * time.Second)
 			select {
 			case f := <-files:
 				rtfacts.PushBack(f)
@@ -233,7 +234,7 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 					fmt.Printf("collector_goroutine() artifact : %s, rt-count = %d\n", f, rtfacts.Len())
 				}
 			case <-timeout:
-				fmt.Println("Timeout after 60s")
+				fmt.Printf("Timeout after %ds\n", getArtiTimeout)
 				return
 			}
 		}
