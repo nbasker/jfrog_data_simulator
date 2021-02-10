@@ -56,6 +56,9 @@ type GenericSimConfig struct {
 type RemoteHttpConn struct {
 	RemoteRepos []string `yaml:"remoterepos"`
 	TargetDir   string   `yaml:"targetdir"`
+	Repeat      bool     `yaml:"repeat"`
+	RepeatCount int      `yaml:"repeatcount"`
+	RepeatFreq  int      `yaml:"repeatfreq"`
 }
 type SimConfig struct {
 	GenericSimCfg     GenericSimConfig `yaml:"genericconfig"`

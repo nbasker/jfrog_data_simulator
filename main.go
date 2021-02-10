@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	jflog "github.com/jfrog/jfrog-client-go/utils/log"
 	"jfrog.com/datasim/confighandler"
@@ -67,9 +68,21 @@ func main() {
 	}
 
 	dataSim := simulator.NewSimulator(&refRtDetails, &dutRtDetails, &refRtMgr, &dutRtMgr)
-	err = dataSim.SimRemoteHttpConns(&cfg.SimulationCfg.RemoteHttpConnCfg.RemoteRepos, cfg.SimulationCfg.RemoteHttpConnCfg.TargetDir)
-	if err != nil {
-		jflog.Error(fmt.Sprintf("Failed simulation of RemoteHttpConns"))
+
+	// RemoteHttpConns Simulation
+	repeatCount := 1
+	repeatFreq := 60
+	if cfg.SimulationCfg.RemoteHttpConnCfg.Repeat == true {
+		repeatCount = cfg.SimulationCfg.RemoteHttpConnCfg.RepeatCount
+		repeatFreq = cfg.SimulationCfg.RemoteHttpConnCfg.RepeatFreq
+	}
+	for i := 0; i < repeatCount; i++ {
+		err = dataSim.SimRemoteHttpConns(&cfg.SimulationCfg.RemoteHttpConnCfg.RemoteRepos, cfg.SimulationCfg.RemoteHttpConnCfg.TargetDir)
+		if err != nil {
+			jflog.Error(fmt.Sprintf("Failed simulation of RemoteHttpConns"))
+		}
+		fmt.Printf("Completed Iteration : %d, waiting for %ds for next iteration\n", i, repeatFreq)
+		time.Sleep(time.Duration(repeatFreq) * time.Second)
 	}
 
 	jflog.Info("Ending data simulator")

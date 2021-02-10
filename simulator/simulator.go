@@ -34,14 +34,18 @@ func (s *Simulator) SimRemoteHttpConns(cfgRepos *[]string, tgtDir string) error 
 	repoList := []string{}
 	remoteRepos, err := remoteartifacts.GetRepoInfo(s.RefRtDetail, cfgRepos)
 	for _, r := range *remoteRepos {
-		fmt.Printf("Fetching files in repo : %+v\n", r)
+		jflog.Info(fmt.Sprintf("Fetching files in repo : %+v", r))
 
 		dutRemoteRepo, err := (*s.DutRtMgr).GetRepository(r.Key)
 		if dutRemoteRepo != nil && dutRemoteRepo.Key == r.Key {
 			jflog.Info(fmt.Sprintf("Remote repo %s is present in DUT", dutRemoteRepo.Key))
-			if err := (*s.DutRtMgr).DeleteRepository(dutRemoteRepo.Key); err != nil {
-				jflog.Error(fmt.Sprintf("Failed to delete in the DUT remote repo %s", dutRemoteRepo.Key))
-				os.Exit(-1)
+			for {
+				err := (*s.DutRtMgr).DeleteRepository(dutRemoteRepo.Key)
+				if err == nil {
+					break
+				}
+				jflog.Error(fmt.Sprintf("Failed to delete in the DUT remote repo %s, retrying after a minute...", dutRemoteRepo.Key))
+				time.Sleep(60 * time.Second)
 			}
 			jflog.Info(fmt.Sprintf("Pausing after deleting %s in DUT", dutRemoteRepo.Key))
 			time.Sleep(5 * time.Second)

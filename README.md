@@ -33,6 +33,9 @@ remotehttpconn:
     - "atlassian"
     - "jfrog-libs"
   targetdir: "./remotehttpconndload"
+  repeat: true
+  repeatcount: 2
+  repeatfreq: 60
 ```
 
 ## Usage
