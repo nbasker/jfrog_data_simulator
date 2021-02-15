@@ -3,6 +3,7 @@ package simulator
 import (
 	"container/list"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"time"
 
@@ -122,7 +123,6 @@ func (s *Simulator) SimRemoteHttpConns(cfgRepos *[]string, tgtDir string) error 
 	return err
 }
 
-/*
 func (s *Simulator) SimDbConns() error {
 	aqls := []string{
 		`items.find({"name" : {"$match":"*.jar"}}).sort({"$asc" : ["repo","name"]})`,
@@ -132,5 +132,19 @@ func (s *Simulator) SimDbConns() error {
 		`items.find({"name" : {"$match":"*.jar"}}).sort({"$desc" : ["repo","name"]})`,
 		`items.find({"size" : {"$lt":"10000"},"name":{"$match":"*.jar"},"$or":[{"repo" : "jfrog-libs-cache", "repo" : "ubuntu-cache" }]})`,
 	}
+
+	for _, q := range aqls {
+		resp, err := (*s.DutRtMgr).Aql(q)
+		if err != nil {
+			jflog.Error(fmt.Sprintf("Failed AQL = %s", q))
+		}
+		qresult, err := ioutil.ReadAll(resp)
+		if err != nil {
+			jflog.Error(fmt.Sprintf("ReadAll Failed for AQL = %s", q))
+		}
+		fmt.Printf("AQL = %s, Response size = %d bytes\n", q, len(qresult))
+		fmt.Printf("Response = %s\n", qresult)
+		resp.Close()
+	}
+	return nil
 }
-*/

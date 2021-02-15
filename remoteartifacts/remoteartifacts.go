@@ -267,8 +267,8 @@ func downloadRemoteArtifactWorker(artDetails *jfauth.ServiceDetails, chFiles <-c
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			jflog.Error("http.DefaultClient.Do failed")
+			continue
 		}
-		defer resp.Body.Close()
 
 		fpath := tgtDir + "/" + f
 		fdir, _ := filepath.Split(fpath)
@@ -280,9 +280,9 @@ func downloadRemoteArtifactWorker(artDetails *jfauth.ServiceDetails, chFiles <-c
 		out, err := os.Create(fpath)
 		if err != nil {
 			jflog.Error("Failed to create file : %s", fpath)
+			resp.Body.Close()
 			continue
 		}
-		defer out.Close()
 
 		// Write the body to file
 		_, err = io.Copy(out, resp.Body)
@@ -291,6 +291,8 @@ func downloadRemoteArtifactWorker(artDetails *jfauth.ServiceDetails, chFiles <-c
 		}
 		//fmt.Printf("downloading to complete: %s\n", fpath)
 		dlcount++
+		resp.Body.Close()
+		out.Close()
 	}
 	//fmt.Printf("downloadRemoteArtifactWorker() complete, downloaded %d files\n", dlcount)
 	jflog.Info(fmt.Sprintf("downloadRemoteArtifactWorker() complete, downloaded %d files", dlcount))

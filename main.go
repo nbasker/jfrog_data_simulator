@@ -85,5 +85,7 @@ func main() {
 		time.Sleep(time.Duration(repeatFreq) * time.Second)
 	}
 
+	err = dataSim.SimDbConns()
+
 	jflog.Info("Ending data simulator")
 }
