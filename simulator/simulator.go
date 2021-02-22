@@ -33,6 +33,7 @@ func NewSimulator(rd *jfauth.ServiceDetails, dd *jfauth.ServiceDetails, rm *arti
 	}
 }
 
+// SimRemoteHttpConns simulates remote http connections by doing download of remote artifacts
 func (s *Simulator) SimRemoteHttpConns(cfgRepos *[]string, tgtDir string) error {
 	repoList := []string{}
 	remoteRepos, err := remoteartifacts.GetRepoInfo(s.RefRtDetail, cfgRepos)
@@ -125,6 +126,7 @@ func (s *Simulator) SimRemoteHttpConns(cfgRepos *[]string, tgtDir string) error 
 	return err
 }
 
+// SimDbConns simulates db connections by doing AQL queries
 func (s *Simulator) SimDbConns() error {
 	aqls := []string{
 		`items.find({"name" : {"$match":"*.jar"}}).sort({"$asc" : ["repo","name"]})`,
@@ -155,15 +157,15 @@ func (s *Simulator) SimDbConns() error {
 				if err != nil {
 					jflog.Error(fmt.Sprintf("ReadAll Failed for AQL = %s", q))
 				}
-				jflog.Info(fmt.Sprintf("AQL = %s, Response size = %d bytes\n", q, len(qresult)))
+				jflog.Debug(fmt.Sprintf("AQL = %s, Response size = %d bytes\n", q, len(qresult)))
 				resp.Close()
 			}
-			fmt.Printf("Completed dbconn worker %d\n", wnum)
+			jflog.Info(fmt.Sprintf("Completed dbconn worker %d", wnum))
 			workerg.Done()
 		}(i)
 	}
 
 	workerg.Wait()
-	fmt.Println("All SimDbConns() go-routines completed")
+	jflog.Info(fmt.Sprintf("All SimDbConns() go-routines completed"))
 	return nil
 }

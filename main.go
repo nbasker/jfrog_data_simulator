@@ -60,8 +60,8 @@ func main() {
 	dutRtSvcID, err := refRtMgr.GetServiceId()
 	jflog.Info("DUT RT ServiceId = ", dutRtSvcID)
 
-	fmt.Printf("RemoteHttpConnCfg-RemoteRepos = %+v\n", cfg.SimulationCfg.RemoteHttpConnCfg.RemoteRepos)
-	fmt.Printf("GenericSimCfg = %+v\n", cfg.SimulationCfg.GenericSimCfg.MetricPoll)
+	jflog.Info(fmt.Sprintf("RemoteHttpConnCfg-RemoteRepos = %+v", cfg.SimulationCfg.RemoteHttpConnCfg.RemoteRepos))
+	jflog.Info(fmt.Sprintf("GenericSimCfg = %+v", cfg.SimulationCfg.GenericSimCfg.MetricPoll))
 
 	if cfg.SimulationCfg.GenericSimCfg.MetricPoll.Artifactory == true {
 		go remoteartifacts.PollArtiMetricsRestEndpoint(&dutRtDetails, cfg.SimulationCfg.GenericSimCfg.MetricPoll.MetricPollFreq)
@@ -81,10 +81,11 @@ func main() {
 		if err != nil {
 			jflog.Error(fmt.Sprintf("Failed simulation of RemoteHttpConns"))
 		}
-		fmt.Printf("Completed Iteration : %d, waiting for %ds for next iteration\n", i, repeatFreq)
+		jflog.Info(fmt.Sprintf("Completed Iteration : %d, waiting for %ds for next iteration", i, repeatFreq))
 		time.Sleep(time.Duration(repeatFreq) * time.Second)
 	}
 
+	// DbConns Simulation
 	err = dataSim.SimDbConns()
 
 	jflog.Info("Ending data simulator")

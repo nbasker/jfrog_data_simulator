@@ -210,14 +210,14 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 			workerg.Done()
 		}()
 	}
-	fmt.Printf("Created %d getRemoteArtifactWorker() go routines\n", numWorkers)
+	jflog.Info(fmt.Sprintf("Created %d getRemoteArtifactWorker() go routines", numWorkers))
 
 	go func(rl *[]string, chFolder chan<- string) {
 		for _, r := range *rl {
 			chFolder <- r
 		}
 	}(repos, folders)
-	fmt.Printf("Pushed initial remote repo's\n")
+	jflog.Info(fmt.Sprintf("Pushed initial remote repo's"))
 
 	const getArtiTimeout = 60
 	var collectorg sync.WaitGroup
@@ -231,20 +231,21 @@ func GetRemoteArtifactFiles(artDetails *jfauth.ServiceDetails, repos *[]string) 
 				rtfacts.PushBack(f)
 				jflog.Debug(f)
 				if rtfacts.Len()%1000 == 0 {
-					fmt.Printf("collector_goroutine() artifact : %s, rt-count = %d\n", f, rtfacts.Len())
+					jflog.Info(fmt.Sprintf("collector_goroutine() artifact : %s, rt-count = %d", f, rtfacts.Len()))
 				}
 			case <-timeout:
-				fmt.Printf("Timeout after %ds\n", getArtiTimeout)
+				fmt.Printf("Timeout after %d seconds\n", getArtiTimeout)
+				jflog.Info(fmt.Printf("Timeout after %d seconds", getArtiTimeout))
 				return
 			}
 		}
 	}()
 
 	collectorg.Wait()
-	fmt.Println("All results collected, collector_goroutine() done, closing folders channel")
+	jflog.Info(fmt.Sprintf("All results collected, collector_goroutine() done, closing folders channel"))
 	close(folders)
 	workerg.Wait()
-	fmt.Println("All getRemoteArtifactWorker() completed, closing files channel")
+	jflog.Info(fmt.Sprintf("All getRemoteArtifactWorker() completed, closing files channel"))
 	close(files)
 
 	return rtfacts, nil
@@ -311,7 +312,7 @@ func DownloadRemoteArtifacts(artDetails *jfauth.ServiceDetails, rtfacts *list.Li
 			workerg.Done()
 		}()
 	}
-	fmt.Printf("Created %d downloadRemoteArtifactWorker() go routines\n", numWorkers)
+	jflog.Info(fmt.Sprintf("Created %d downloadRemoteArtifactWorker() go routines", numWorkers))
 
 	count := 1
 	for e := rtfacts.Front(); e != nil; e = e.Next() {
@@ -322,23 +323,23 @@ func DownloadRemoteArtifacts(artDetails *jfauth.ServiceDetails, rtfacts *list.Li
 
 		files <- f
 		if count%1000 == 0 {
-			fmt.Printf("completed sending %d rtfacts for download\n", count)
+			jflog.Info(fmt.Sprintf("completed sending %d rtfacts for download", count))
 			//break
 		}
 		count++
 	}
-	fmt.Printf("Completed sending %d rtfacts for downloading, waiting for 60s\n", count)
+	jflog.Info(fmt.Sprintf("Completed sending %d rtfacts for downloading, waiting for 60s", count))
 	time.Sleep(60 * time.Second)
 	close(files)
-	fmt.Println("Closing files channel, waiting for all downloadRemoteArtifactWorker() to complete")
+	jflog.Info(fmt.Sprintf("Closing files channel, waiting for all downloadRemoteArtifactWorker() to complete"))
 	workerg.Wait()
-	fmt.Println("All downloadRemoteArtifactWorker() completed")
+	jflog.Info(fmt.Sprintf("All downloadRemoteArtifactWorker() completed"))
 	return nil
 }
 
 // PollMetricsRestEndpoint polls the REST API periodically
 func PollArtiMetricsRestEndpoint(artDetails *jfauth.ServiceDetails, intervalSecs int) {
-	fmt.Printf("Polling api/v1/metrics REST end point\n")
+	jflog.Info(fmt.Sprintf("Polling api/v1/metrics REST end point"))
 	url := "api/v1/metrics"
 	for {
 		resp, err := getHttpResp(artDetails, url)
