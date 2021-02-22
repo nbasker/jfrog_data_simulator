@@ -127,7 +127,7 @@ func (s *Simulator) SimRemoteHttpConns(cfgRepos *[]string, tgtDir string) error 
 }
 
 // SimDbConns simulates db connections by doing AQL queries
-func (s *Simulator) SimDbConns() error {
+func (s *Simulator) SimDbConns(numWorkers int, numItersByWorker int) error {
 	aqls := []string{
 		`items.find({"name" : {"$match":"*.jar"}}).sort({"$asc" : ["repo","name"]})`,
 		`items.find({"modified" : {"$last" : "3d"}})`,
@@ -142,12 +142,11 @@ func (s *Simulator) SimDbConns() error {
 	}
 
 	var workerg sync.WaitGroup
-	const numWorkers = 10
 	workerg.Add(numWorkers)
 	for i := 0; i < numWorkers; i++ {
 		go func(wnum int) {
 			rand.Seed(time.Now().UnixNano())
-			for i := 0; i < 100; i++ {
+			for i := 0; i < numItersByWorker; i++ {
 				q := aqls[rand.Intn(len(aqls))]
 				resp, err := (*s.DutRtMgr).Aql(q)
 				if err != nil {

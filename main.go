@@ -86,7 +86,7 @@ func main() {
 	}
 
 	// DbConns Simulation
-	err = dataSim.SimDbConns()
+	err = dataSim.SimDbConns(cfg.SimulationCfg.DbConnCfg.NumWorkers, cfg.SimulationCfg.DbConnCfg.NumItersByWorker)
 
 	jflog.Info("Ending data simulator")
 }

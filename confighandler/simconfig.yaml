@@ -1,0 +1,21 @@
+# Generic Simulator Config
+genericconfig:
+  metricpoll:
+    artifactory: false
+    metricpollfreq: 60
+
+# Remote Http Connection Simulator Config
+remotehttpconn:
+  remoterepos:
+    - "atlassian"
+    - "jfrog-libs"
+    - "ubuntu"
+  targetdir: "./remotehttpconndload"
+  repeat: true
+  repeatcount: 1
+  repeatfreq: 60
+
+# Db Connection Simulator Config
+dbconn:
+  numworkers: 10
+  numitersbyworker: 100

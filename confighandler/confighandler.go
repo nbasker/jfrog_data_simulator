@@ -60,9 +60,14 @@ type RemoteHttpConn struct {
 	RepeatCount int      `yaml:"repeatcount"`
 	RepeatFreq  int      `yaml:"repeatfreq"`
 }
+type DbConn struct {
+	NumWorkers       int `yaml:"numworkers"`
+	NumItersByWorker int `yaml:"numitersbyworker"`
+}
 type SimConfig struct {
 	GenericSimCfg     GenericSimConfig `yaml:"genericconfig"`
 	RemoteHttpConnCfg RemoteHttpConn   `yaml:"remotehttpconn"`
+	DbConnCfg         DbConn           `yaml:"dbconn"`
 }
 
 // NewRtConfig returns a new decoded RtConfig struct
@@ -71,7 +76,7 @@ func NewRtConfig() (*RtConfig, error) {
 	config := &RtConfig{}
 
 	flag.StringVar(&config.CredentialsPath, "credentials", "./credentials.yaml", "path to credentials file")
-	flag.StringVar(&config.SimConfigPath, "simconfig", "./simconfig.yaml", "path to simulation config file")
+	flag.StringVar(&config.SimConfigPath, "simconfig", "./confighandler/simconfig.yaml", "path to simulation config file")
 
 	// Actually parse the flags
 	flag.Parse()
