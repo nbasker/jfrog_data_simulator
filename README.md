@@ -19,7 +19,7 @@ dutartiserver:
     artiapikey: "<api-key>"
 ```
 
-*simconfig.yaml*
+*confighandler/simconfig.yaml*
 ```
 # Generic Simulator Config
 genericconfig:
@@ -36,6 +36,11 @@ remotehttpconn:
   repeat: true
   repeatcount: 2
   repeatfreq: 60
+
+# Db Connection Simulator Config
+dbconn:
+  numworkers: 10
+  numitersbyworker: 100
 ```
 
 ## Usage
