@@ -4,7 +4,9 @@ import (
 	"container/list"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jfrog/jfrog-client-go/artifactory"
@@ -131,20 +133,37 @@ func (s *Simulator) SimDbConns() error {
 		`items.find({"size" : {"$gt":"5000"},"name":{"$match":"*.jar"},"$or":[{"repo" : "jfrog-libs-cache", "repo" : "ubuntu-cache" }]})`,
 		`items.find({"name" : {"$match":"*.jar"}}).sort({"$desc" : ["repo","name"]})`,
 		`items.find({"size" : {"$lt":"10000"},"name":{"$match":"*.jar"},"$or":[{"repo" : "jfrog-libs-cache", "repo" : "ubuntu-cache" }]})`,
+		`items.find({"name" : {"$match":"*.pom"}}).sort({"$desc" : ["repo","name"]})`,
+		`items.find({"size" : {"$lt":"10000"},"name":{"$match":"*.pom"},"$or":[{"repo" : "jfrog-libs-cache", "repo" : "ubuntu-cache" }]})`,
+		`items.find({"name" : {"$match":"*.xml"}}).sort({"$desc" : ["repo","name"]})`,
+		`items.find({"size" : {"$gt":"100"},"name":{"$match":"*.xml"},"$or":[{"repo" : "jfrog-libs-cache", "repo" : "ubuntu-cache" }]})`,
 	}
 
-	for _, q := range aqls {
-		resp, err := (*s.DutRtMgr).Aql(q)
-		if err != nil {
-			jflog.Error(fmt.Sprintf("Failed AQL = %s", q))
-		}
-		qresult, err := ioutil.ReadAll(resp)
-		if err != nil {
-			jflog.Error(fmt.Sprintf("ReadAll Failed for AQL = %s", q))
-		}
-		fmt.Printf("AQL = %s, Response size = %d bytes\n", q, len(qresult))
-		fmt.Printf("Response = %s\n", qresult)
-		resp.Close()
+	var workerg sync.WaitGroup
+	const numWorkers = 10
+	workerg.Add(numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		go func(wnum int) {
+			rand.Seed(time.Now().UnixNano())
+			for i := 0; i < 100; i++ {
+				q := aqls[rand.Intn(len(aqls))]
+				resp, err := (*s.DutRtMgr).Aql(q)
+				if err != nil {
+					jflog.Error(fmt.Sprintf("Failed AQL = %s", q))
+				}
+				qresult, err := ioutil.ReadAll(resp)
+				if err != nil {
+					jflog.Error(fmt.Sprintf("ReadAll Failed for AQL = %s", q))
+				}
+				jflog.Info(fmt.Sprintf("AQL = %s, Response size = %d bytes\n", q, len(qresult)))
+				resp.Close()
+			}
+			fmt.Printf("Completed dbconn worker %d\n", wnum)
+			workerg.Done()
+		}(i)
 	}
+
+	workerg.Wait()
+	fmt.Println("All SimDbConns() go-routines completed")
 	return nil
 }
